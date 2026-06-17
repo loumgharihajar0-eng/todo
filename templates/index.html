@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Todo SQLite</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Flask + SQLite</p>
+          <h1>Todo list dynamique</h1>
+          <p class="lede">Ajoute, coche, modifie et supprime tes tâches sans recharger la page. Les données restent dans SQLite.</p>
+        </div>
+        <div class="stats" aria-live="polite">
+          <div>
+            <span id="totalCount">0</span>
+            <small>Total</small>
+          </div>
+          <div>
+            <span id="openCount">0</span>
+            <small>En cours</small>
+          </div>
+          <div>
+            <span id="doneCount">0</span>
+            <small>Terminées</small>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <form id="todoForm" class="composer">
+          <input id="todoInput" name="title" type="text" maxlength="140" placeholder="Écris une nouvelle tâche..." autocomplete="off" />
+          <button type="submit">Ajouter</button>
+        </form>
+
+        <div class="toolbar" role="tablist" aria-label="Filtres">
+          <button class="filter is-active" data-filter="all" type="button">Tout</button>
+          <button class="filter" data-filter="active" type="button">Actives</button>
+          <button class="filter" data-filter="completed" type="button">Terminées</button>
+        </div>
+
+        <p id="message" class="message" aria-live="polite"></p>
+        <ul id="todoList" class="todo-list"></ul>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
