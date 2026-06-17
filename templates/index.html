@@ -3,43 +3,85 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Todo SQLite</title>
+    <title>Todo — Enterprise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
-    <main class="shell">
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Flask + SQLite</p>
-          <h1>Todo list dynamique</h1>
-          <p class="lede">Ajoute, coche, modifie et supprime tes tâches sans recharger la page. Les données restent dans SQLite.</p>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+            <rect x="2" y="2" width="20" height="20" rx="6" fill="#0F766E" />
+            <path d="M7 12h10" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <div class="product">
+            <div class="name">Aurora Tasks</div>
+            <div class="tag">Enterprise</div>
+          </div>
         </div>
-        <div class="stats" aria-live="polite">
-          <div>
-            <span id="totalCount">0</span>
-            <small>Total</small>
+
+        <div class="global-controls">
+          <input id="globalSearch" class="search" type="search" placeholder="Rechercher des tâches, personnes, projets..." aria-label="Recherche globale" />
+          <button id="newTaskBtn" class="btn primary small">Nouvelle tâche</button>
+          <button id="themeToggle" class="btn ghost" aria-pressed="false">🌙</button>
+          <div class="avatar" title="Compte utilisateur">H</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="dashboard">
+        <div class="cards">
+          <div class="card">
+            <div class="icon">📋</div>
+            <div class="value" id="cardTotal">0</div>
+            <div class="label">Total des tâches</div>
+            <div class="delta" id="deltaTotal">+0%</div>
           </div>
-          <div>
-            <span id="openCount">0</span>
-            <small>En cours</small>
+          <div class="card">
+            <div class="icon">⚡</div>
+            <div class="value" id="cardOpen">0</div>
+            <div class="label">En cours</div>
+            <div class="delta" id="deltaOpen">-</div>
           </div>
-          <div>
-            <span id="doneCount">0</span>
-            <small>Terminées</small>
+          <div class="card">
+            <div class="icon">✅</div>
+            <div class="value" id="cardDone">0</div>
+            <div class="label">Terminées</div>
+            <div class="delta" id="deltaDone">+0%</div>
+          </div>
+          <div class="card">
+            <div class="icon">📈</div>
+            <div class="value" id="cardProd">0%</div>
+            <div class="label">Productivité</div>
+            <div class="delta" id="deltaProd">—</div>
           </div>
         </div>
       </section>
 
       <section class="panel">
-        <form id="todoForm" class="composer">
-          <input id="todoInput" name="title" type="text" maxlength="140" placeholder="Écris une nouvelle tâche..." autocomplete="off" />
-          <button type="submit">Ajouter</button>
-        </form>
+        <div class="panel-actions">
+          <div class="left-actions">
+            <input id="quickFilter" class="input" placeholder="Filtrer par statut ou tag" />
+            <select id="sortSelect" class="input">
+              <option value="new">Trier par: Nouveaux</option>
+              <option value="old">Trier par: Anciens</option>
+              <option value="alpha">Trier par: A → Z</option>
+            </select>
+          </div>
+          <div class="right-actions">
+            <button id="addInlineBtn" class="btn primary">Ajouter</button>
+          </div>
+        </div>
 
-        <div class="toolbar" role="tablist" aria-label="Filtres">
-          <button class="filter is-active" data-filter="all" type="button">Tout</button>
-          <button class="filter" data-filter="active" type="button">Actives</button>
-          <button class="filter" data-filter="completed" type="button">Terminées</button>
+        <div class="composer-row">
+          <form id="todoForm" class="composer">
+            <input id="todoInput" name="title" type="text" maxlength="220" placeholder="Créer une tâche rapide..." autocomplete="off" />
+            <button type="submit" class="btn primary">Ajouter</button>
+          </form>
         </div>
 
         <p id="message" class="message" aria-live="polite"></p>

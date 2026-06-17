@@ -2,13 +2,22 @@ const todoForm = document.getElementById('todoForm');
 const todoInput = document.getElementById('todoInput');
 const todoList = document.getElementById('todoList');
 const message = document.getElementById('message');
-const filterButtons = Array.from(document.querySelectorAll('.filter'));
-const totalCount = document.getElementById('totalCount');
-const openCount = document.getElementById('openCount');
-const doneCount = document.getElementById('doneCount');
+const globalSearch = document.getElementById('globalSearch');
+const quickFilter = document.getElementById('quickFilter');
+const sortSelect = document.getElementById('sortSelect');
+const newTaskBtn = document.getElementById('newTaskBtn');
+const addInlineBtn = document.getElementById('addInlineBtn');
+const themeToggle = document.getElementById('themeToggle');
+
+const cardTotal = document.getElementById('cardTotal');
+const cardOpen = document.getElementById('cardOpen');
+const cardDone = document.getElementById('cardDone');
+const cardProd = document.getElementById('cardProd');
 
 let todos = [];
 let filter = 'all';
+let searchQuery = '';
+let quickQuery = '';
 
 function setMessage(text) {
   message.textContent = text;
@@ -26,21 +35,39 @@ function formatDate(value) {
 
 function updateStats() {
   const done = todos.filter((todo) => todo.completed).length;
-  totalCount.textContent = todos.length;
-  openCount.textContent = todos.length - done;
-  doneCount.textContent = done;
+  const total = todos.length;
+  const open = total - done;
+  if (cardTotal) cardTotal.textContent = total;
+  if (cardOpen) cardOpen.textContent = open;
+  if (cardDone) cardDone.textContent = done;
+  const prod = total === 0 ? 0 : Math.round((done / total) * 100);
+  if (cardProd) cardProd.textContent = prod + '%';
 }
 
 function visibleTodos() {
-  if (filter === 'active') {
-    return todos.filter((todo) => !todo.completed);
+  let list = todos.slice();
+
+  // quick status filter
+  if (quickQuery) {
+    const q = quickQuery.toLowerCase();
+    if (q === 'active' || q === 'en cours' || q === 'open') list = list.filter(t => !t.completed);
+    else if (q === 'done' || q === 'terminées' || q === 'completed') list = list.filter(t => t.completed);
+    else list = list.filter(t => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
   }
 
-  if (filter === 'completed') {
-    return todos.filter((todo) => todo.completed);
+  // global search
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    list = list.filter(t => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
   }
 
-  return todos;
+  // sort
+  const sort = sortSelect ? sortSelect.value : 'new';
+  if (sort === 'alpha') list.sort((a,b) => a.title.localeCompare(b.title));
+  else if (sort === 'old') list.sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+  else list.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+  return list;
 }
 
 function renderTodos() {
@@ -86,18 +113,25 @@ function renderTodos() {
     const actions = document.createElement('div');
     actions.className = 'todo-actions';
 
-    const editButton = document.createElement('button');
-    editButton.type = 'button';
-    editButton.textContent = 'Modifier';
-    editButton.addEventListener('click', () => startEdit(todo, content, title));
+    const menuEdit = document.createElement('button');
+    menuEdit.type = 'button';
+    menuEdit.title = 'Modifier';
+    menuEdit.innerHTML = '✏️';
+    menuEdit.addEventListener('click', () => startEdit(todo, content, title));
 
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'danger';
-    deleteButton.textContent = 'Supprimer';
-    deleteButton.addEventListener('click', () => deleteTodo(todo.id));
+    const menuDone = document.createElement('button');
+    menuDone.type = 'button';
+    menuDone.title = todo.completed ? 'Marquer non terminée' : 'Marquer terminée';
+    menuDone.innerHTML = todo.completed ? '↩️' : '✅';
+    menuDone.addEventListener('click', () => toggleTodo(todo.id, !todo.completed));
 
-    actions.append(editButton, deleteButton);
+    const menuDelete = document.createElement('button');
+    menuDelete.type = 'button';
+    menuDelete.title = 'Supprimer';
+    menuDelete.innerHTML = '🗑️';
+    menuDelete.addEventListener('click', () => deleteTodo(todo.id));
+
+    actions.append(menuEdit, menuDone, menuDelete);
     item.append(checkbox, content, actions);
     todoList.appendChild(item);
   }
@@ -261,9 +295,37 @@ todoForm.addEventListener('submit', async (event) => {
   }
 });
 
-filterButtons.forEach((button) => {
-  button.addEventListener('click', () => setFilter(button.dataset.filter));
-});
+// UI bindings
+if (globalSearch) {
+  globalSearch.addEventListener('input', (e) => { searchQuery = e.target.value.trim(); renderTodos(); });
+}
+
+if (quickFilter) {
+  quickFilter.addEventListener('input', (e) => { quickQuery = e.target.value.trim(); renderTodos(); });
+}
+
+if (sortSelect) {
+  sortSelect.addEventListener('change', () => renderTodos());
+}
+
+if (newTaskBtn) newTaskBtn.addEventListener('click', () => { todoInput.focus(); });
+if (addInlineBtn) addInlineBtn.addEventListener('click', () => { todoInput.focus(); });
+
+// theme toggle
+function applyTheme(theme) {
+  if (theme === 'dark') document.documentElement.setAttribute('data-theme','dark');
+  else document.documentElement.removeAttribute('data-theme');
+}
+
+const savedTheme = localStorage.getItem('theme') || 'light';
+applyTheme(savedTheme);
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', next);
+    applyTheme(next);
+  });
+}
 
 loadTodos().catch(() => {
   setMessage("Impossible de charger la liste. Vérifie que le serveur tourne.");
