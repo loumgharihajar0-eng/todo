@@ -335,6 +335,8 @@ loadTodos().catch(() => {
 const timerToggle = document.getElementById('timerToggle');
 const timerReset = document.getElementById('timerReset');
 const timerDisplay = document.getElementById('timerDisplay');
+const timerPreset = document.getElementById('timerPreset');
+const timerSync = document.getElementById('timerSync');
 
 const TIMER_KEY = 'aurora_timer_v1';
 let timerInterval = null;
@@ -343,6 +345,8 @@ let timerState = {
   running: false,
   endAt: null
 };
+let syncEnabled = false;
+let syncInterval = null;
 
 function loadTimer() {
   try {
@@ -350,7 +354,6 @@ function loadTimer() {
     if (raw) {
       const s = JSON.parse(raw);
       timerState = Object.assign(timerState, s);
-      // if running, recompute remaining
       if (timerState.running && timerState.endAt) {
         const diff = Math.round((timerState.endAt - Date.now()) / 1000);
         timerState.remaining = Math.max(0, diff);
@@ -373,6 +376,25 @@ function updateTimerDisplay() {
   if (timerToggle) timerToggle.textContent = timerState.running ? '⏸' : '▶';
 }
 
+function notifyFinish() {
+  // Play beep via WebAudio
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.value = 0.05;
+    o.connect(g); g.connect(ctx.destination);
+    o.start();
+    setTimeout(() => { o.stop(); ctx.close(); }, 600);
+  } catch (e) { console.warn('audio failed', e); }
+
+  // Desktop notification
+  if (Notification && Notification.permission === 'granted') {
+    try { new Notification('Minuteur', { body: 'Le minuteur est terminé.' }); } catch (e) {}
+  }
+}
+
 function tickTimer() {
   if (!timerState.running) return;
   const now = Date.now();
@@ -380,14 +402,33 @@ function tickTimer() {
   if (timerState.remaining <= 0) {
     timerState.running = false;
     clearInterval(timerInterval); timerInterval = null;
-    // simple alert
-    try { new Audio('/static/tick.mp3'); } catch (e) {}
+    notifyFinish();
   }
   updateTimerDisplay();
   saveTimer();
 }
 
-function startTimer() {
+async function fetchServerTimer() {
+  try {
+    const r = await fetch('/api/timer');
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+
+async function serverStartTimer(duration) {
+  await fetch('/api/timer/start', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ duration }) });
+}
+
+async function serverPauseTimer() {
+  await fetch('/api/timer/pause', { method: 'POST' });
+}
+
+async function serverResetTimer(duration=1500) {
+  await fetch('/api/timer/reset', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ duration }) });
+}
+
+function startTimerLocal() {
   if (timerState.running) return;
   timerState.endAt = Date.now() + timerState.remaining * 1000;
   timerState.running = true;
@@ -397,10 +438,9 @@ function startTimer() {
   updateTimerDisplay();
 }
 
-function pauseTimer() {
+function pauseTimerLocal() {
   if (!timerState.running) return;
   timerState.running = false;
-  // compute remaining
   const diff = Math.max(0, Math.round((timerState.endAt - Date.now()) / 1000));
   timerState.remaining = diff;
   timerState.endAt = null;
@@ -409,25 +449,87 @@ function pauseTimer() {
   updateTimerDisplay();
 }
 
-function resetTimer() {
+function resetTimerLocal(durationSec=1500) {
   timerState.running = false;
-  timerState.remaining = 25 * 60;
+  timerState.remaining = durationSec;
   timerState.endAt = null;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   saveTimer();
   updateTimerDisplay();
 }
 
+async function startTimer() {
+  const duration = timerPreset ? parseInt(timerPreset.value, 10) : 1500;
+  if (syncEnabled) {
+    await serverStartTimer(duration);
+    const s = await fetchServerTimer();
+    if (s) {
+      timerState.remaining = s.remaining; timerState.running = s.running; timerState.endAt = s.end_at; saveTimer();
+    }
+  } else {
+    if (!timerState.running) {
+      // if not running, set remaining to preset if zero or different
+      if (!timerState.remaining || timerState.remaining === 0) timerState.remaining = duration;
+      startTimerLocal();
+    }
+  }
+}
+
+async function pauseTimer() {
+  if (syncEnabled) {
+    await serverPauseTimer();
+    const s = await fetchServerTimer(); if (s) { timerState.remaining = s.remaining; timerState.running = s.running; timerState.endAt = s.end_at; saveTimer(); }
+  } else {
+    pauseTimerLocal();
+  }
+}
+
+async function resetTimer(durationSec=null) {
+  const dur = durationSec !== null ? durationSec : (timerPreset ? parseInt(timerPreset.value,10) : 1500);
+  if (syncEnabled) {
+    await serverResetTimer(dur);
+    const s = await fetchServerTimer(); if (s) { timerState.remaining = s.remaining; timerState.running = s.running; timerState.endAt = s.end_at; saveTimer(); }
+  } else {
+    resetTimerLocal(dur);
+  }
+}
+
 if (timerToggle) {
-  timerToggle.addEventListener('click', () => {
-    if (timerState.running) pauseTimer(); else startTimer();
-  });
+  timerToggle.addEventListener('click', () => { if (timerState.running) pauseTimer(); else startTimer(); });
 }
 
 if (timerReset) {
   timerReset.addEventListener('click', () => resetTimer());
 }
 
+if (timerPreset) {
+  timerPreset.addEventListener('change', () => {
+    const dur = parseInt(timerPreset.value,10);
+    // if not running, set new remaining
+    if (!timerState.running) { timerState.remaining = dur; updateTimerDisplay(); saveTimer(); }
+  });
+}
+
+if (timerSync) {
+  timerSync.addEventListener('click', async () => {
+    syncEnabled = !syncEnabled;
+    timerSync.setAttribute('aria-pressed', String(syncEnabled));
+    if (syncEnabled) {
+      // start polling and align state
+      const s = await fetchServerTimer();
+      if (s) { timerState.remaining = s.remaining; timerState.running = s.running; timerState.endAt = s.end_at; saveTimer(); updateTimerDisplay(); }
+      syncInterval = setInterval(async () => {
+        const s2 = await fetchServerTimer(); if (s2) { timerState.remaining = s2.remaining; timerState.running = s2.running; timerState.endAt = s2.end_at; saveTimer(); updateTimerDisplay(); }
+      }, 1500);
+    } else {
+      if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+    }
+  });
+}
+
+// request notification permission early
+if (window.Notification && Notification.permission !== 'granted') Notification.requestPermission().catch(()=>{});
+
 loadTimer();
-if (timerState.running) startTimer();
+if (timerState.running && !syncEnabled) startTimerLocal();
 updateTimerDisplay();

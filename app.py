@@ -76,6 +76,26 @@ def init_db(database: sqlite3.Connection) -> None:
         database.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ("admin", hashed))
         database.commit()
 
+    # create timers table for optional shared timer
+    database.execute(
+        """
+        CREATE TABLE IF NOT EXISTS timers (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            duration INTEGER NOT NULL DEFAULT 1500,
+            running INTEGER NOT NULL DEFAULT 0,
+            end_at INTEGER,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    database.commit()
+
+    # ensure single timer row exists (id = 1)
+    cur = database.execute("SELECT id FROM timers WHERE id = 1")
+    if cur.fetchone() is None:
+        database.execute("INSERT INTO timers (id, duration, running) VALUES (1, 1500, 0)")
+        database.commit()
+
 
 def serialize_todo(row: sqlite3.Row) -> dict:
     return {
@@ -222,6 +242,61 @@ def delete_todo(todo_id: int) -> tuple[object, int]:
 @app.route("/api/health", methods=["GET"])
 def health() -> tuple[object, int]:
     return jsonify({"ok": True}), 200
+
+
+def read_timer_row(database: sqlite3.Connection):
+    row = database.execute("SELECT duration, running, end_at FROM timers WHERE id = 1").fetchone()
+    if row is None:
+        return {"duration": 1500, "running": False, "end_at": None}
+    return {"duration": row["duration"], "running": bool(row["running"]), "end_at": row["end_at"]}
+
+
+@app.route('/api/timer', methods=['GET'])
+def get_timer():
+    db = get_db()
+    t = read_timer_row(db)
+    now = int(round(__import__('time').time() * 1000))
+    remaining = None
+    if t['running'] and t['end_at']:
+        remaining = max(0, int((t['end_at'] - now) / 1000))
+    else:
+        remaining = t['duration']
+    return jsonify({"duration": t['duration'], "running": t['running'], "end_at": t['end_at'], "remaining": remaining}), 200
+
+
+@app.route('/api/timer/start', methods=['POST'])
+def start_timer():
+    payload = request.get_json(silent=True) or {}
+    duration = int(payload.get('duration', 1500))
+    now = int(round(__import__('time').time() * 1000))
+    end_at = now + duration * 1000
+    db = get_db()
+    db.execute('UPDATE timers SET duration = ?, running = 1, end_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1', (duration, end_at))
+    db.commit()
+    return get_timer()
+
+
+@app.route('/api/timer/pause', methods=['POST'])
+def pause_timer():
+    db = get_db()
+    row = read_timer_row(db)
+    now = int(round(__import__('time').time() * 1000))
+    remaining = row['duration']
+    if row['running'] and row['end_at']:
+        remaining = max(0, int((row['end_at'] - now) / 1000))
+    # store remaining as new duration and stop
+    db.execute('UPDATE timers SET duration = ?, running = 0, end_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = 1', (remaining,))
+    db.commit()
+    return get_timer()
+
+
+@app.route('/api/timer/reset', methods=['POST'])
+def reset_timer():
+    db = get_db()
+    default = int(request.get_json(silent=True) or {}).get('duration', 1500)
+    db.execute('UPDATE timers SET duration = ?, running = 0, end_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = 1', (default,))
+    db.commit()
+    return get_timer()
 
 
 if __name__ == "__main__":

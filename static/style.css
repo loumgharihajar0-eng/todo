@@ -79,6 +79,8 @@ body {
 .timer .timer-display { font-weight:700; font-size:14px; color:var(--text); min-width:48px; text-align:center }
 .btn.ghost.small { padding:6px 8px; border-radius:8px }
 
+.timer .input { padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--text) }
+
 .eyebrow {
   margin: 0 0 10px;
   text-transform: uppercase;
