@@ -467,5 +467,7 @@ def reset_timer():
 
 
 if __name__ == "__main__":
-    init_db()
+    db = sqlite3.connect(DB_PATH)
+    init_db(db)
+    db.close()
     app.run(debug=True)
