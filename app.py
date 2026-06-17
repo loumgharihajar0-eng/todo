@@ -7,6 +7,11 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, g, session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import smtplib
+import ssl
+import secrets
+import time
+from email.message import EmailMessage
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -55,6 +60,15 @@ def init_db(database: sqlite3.Connection) -> None:
         """
     )
     database.commit()
+
+    # if existing DB missing email column, add it
+    cols = [r[1] for r in database.execute("PRAGMA table_info('users')").fetchall()]
+    if 'email' not in cols:
+        try:
+            database.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            database.commit()
+        except Exception:
+            pass
     # create users table
     database.execute(
         """
@@ -62,6 +76,7 @@ def init_db(database: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
+            email TEXT,
             is_admin INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -95,6 +110,21 @@ def init_db(database: sqlite3.Connection) -> None:
     if cur.fetchone() is None:
         database.execute("INSERT INTO timers (id, duration, running) VALUES (1, 1500, 0)")
         database.commit()
+    # create password_resets table
+    database.execute(
+        """
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            expires_at INTEGER NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
+    database.commit()
 
 
 def serialize_todo(row: sqlite3.Row) -> dict:
@@ -166,6 +196,136 @@ def admin():
     total = db.execute('SELECT COUNT(*) as cnt FROM todos').fetchone()['cnt']
     users = db.execute('SELECT id, username, is_admin, created_at FROM users ORDER BY id DESC').fetchall()
     return render_template('admin.html', total=total, users=users)
+
+
+def send_email(to_email: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
+    host = os.getenv('SMTP_HOST')
+    port = int(os.getenv('SMTP_PORT', '587'))
+    user = os.getenv('SMTP_USER')
+    password = os.getenv('SMTP_PASS')
+    from_addr = os.getenv('EMAIL_FROM', os.getenv('SMTP_USER'))
+
+    if not host or not from_addr:
+        return False
+
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = from_addr
+    msg['To'] = to_email
+    msg.set_content(body_text)
+    if body_html:
+        msg.add_alternative(body_html, subtype='html')
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            server.starttls(context=context)
+            if user and password:
+                server.login(user, password)
+            server.send_message(msg)
+        return True
+    except Exception:
+        return False
+
+
+def create_password_reset(db: sqlite3.Connection, user_id: int, expire_seconds: int = 3600) -> str:
+    token = secrets.token_urlsafe(32)
+    expires_at = int(time.time() * 1000) + expire_seconds * 1000
+    db.execute('INSERT INTO password_resets (user_id, token, expires_at, used) VALUES (?, ?, ?, 0)', (user_id, token, expires_at))
+    db.commit()
+    return token
+
+
+def get_password_reset(db: sqlite3.Connection, token: str):
+    row = db.execute('SELECT id, user_id, token, expires_at, used FROM password_resets WHERE token = ?', (token,)).fetchone()
+    return row
+
+
+@app.route('/password-reset-request', methods=['GET', 'POST'])
+def password_reset_request():
+    if request.method == 'POST':
+        identifier = request.form.get('identifier', '').strip()
+        if not identifier:
+            flash('Veuillez fournir le nom d\'utilisateur ou l\'email')
+            return redirect(url_for('password_reset_request'))
+
+        db = get_db()
+        user = db.execute('SELECT id, username, email FROM users WHERE username = ? OR email = ?', (identifier, identifier)).fetchone()
+        if not user:
+            flash('Utilisateur introuvable')
+            return redirect(url_for('password_reset_request'))
+
+        if not user['email']:
+            flash('Cet utilisateur n\'a pas d\'email enregistré')
+            return redirect(url_for('password_reset_request'))
+
+        token = create_password_reset(db, user['id'])
+        reset_url = url_for('password_reset', token=token, _external=True)
+        text = render_template('password_reset_email.txt', username=user['username'], reset_url=reset_url)
+        send_email(user['email'], 'Réinitialisation de votre mot de passe', text)
+        flash('Un email de réinitialisation a été envoyé si l\'adresse existe')
+        return redirect(url_for('index'))
+
+    return render_template('password_reset_request.html')
+
+
+@app.route('/password-reset/<token>', methods=['GET', 'POST'])
+def password_reset(token):
+    db = get_db()
+    row = get_password_reset(db, token)
+    if not row:
+        flash('Token invalide')
+        return redirect(url_for('index'))
+    if row['used']:
+        flash('Ce lien a déjà été utilisé')
+        return redirect(url_for('index'))
+    if int(row['expires_at']) < int(time.time() * 1000):
+        flash('Le lien a expiré')
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        pw = request.form.get('password', '').strip()
+        pw2 = request.form.get('password2', '').strip()
+        if not pw or pw != pw2:
+            flash('Les mots de passe doivent correspondre et ne pas être vides')
+            return redirect(url_for('password_reset', token=token))
+        hashed = generate_password_hash(pw)
+        db.execute('UPDATE users SET password = ? WHERE id = ?', (hashed, row['user_id']))
+        db.execute('UPDATE password_resets SET used = 1 WHERE id = ?', (row['id'],))
+        db.commit()
+        flash('Mot de passe mis à jour; vous pouvez maintenant vous connecter')
+        return redirect(url_for('login'))
+
+    return render_template('password_reset_form.html', token=token)
+
+
+@app.route('/admin/send-reset/<int:user_id>', methods=['POST'])
+@login_required
+def admin_send_reset(user_id: int):
+    # only admins can trigger
+    cur = get_db().execute('SELECT is_admin FROM users WHERE id = ?', (session.get('user_id'),)).fetchone()
+    if not cur or not cur['is_admin']:
+        flash('Accès refusé')
+        return redirect(url_for('admin'))
+
+    db = get_db()
+    user = db.execute('SELECT id, username, email FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not user:
+        flash('Utilisateur introuvable')
+        return redirect(url_for('admin'))
+    if not user['email']:
+        flash('L\'utilisateur n\'a pas d\'email')
+        return redirect(url_for('admin'))
+
+    token = create_password_reset(db, user['id'])
+    reset_url = url_for('password_reset', token=token, _external=True)
+    text = render_template('password_reset_email.txt', username=user['username'], reset_url=reset_url)
+    ok = send_email(user['email'], 'Réinitialisation de votre mot de passe', text)
+    if ok:
+        flash('Email envoyé')
+    else:
+        flash('Échec envoi email; vérifiez la configuration SMTP')
+    return redirect(url_for('admin'))
 
 
 @app.route("/api/todos", methods=["GET"])

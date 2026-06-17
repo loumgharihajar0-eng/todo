@@ -23,14 +23,22 @@
         <p>Total des tâches: {{ total }}</p>
         <h3>Utilisateurs</h3>
         <table style="width:100%">
-          <thead><tr><th>ID</th><th>Username</th><th>Admin</th><th>Inscrit</th></tr></thead>
+          <thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Admin</th><th>Inscrit</th><th>Actions</th></tr></thead>
           <tbody>
             {% for u in users %}
             <tr>
               <td>{{ u.id }}</td>
               <td>{{ u.username }}</td>
+              <td>{{ u.email or '-' }}</td>
               <td>{{ 'oui' if u.is_admin else 'non' }}</td>
               <td>{{ u.created_at }}</td>
+              <td>
+                {% if u.email %}
+                <form method="post" action="{{ url_for('admin_send_reset', user_id=u.id) }}" style="display:inline">
+                  <button class="btn ghost small" type="submit">Envoyer reset</button>
+                </form>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
