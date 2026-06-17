@@ -17,12 +17,15 @@
         {% endwith %}
         <form method="post">
           <label>Nom d'utilisateur</label>
-          <input name="username" autofocus />
+          <input class="input" name="username" autofocus />
           <label>Mot de passe</label>
-          <input name="password" type="password" />
+          <input class="input" name="password" type="password" />
           <div style="margin-top:12px;display:flex;gap:8px;">
             <button class="btn primary" type="submit">Se connecter</button>
             <a href="/" class="btn ghost">Annuler</a>
+          </div>
+          <div style="margin-top:12px;text-align:center;">
+            <a href="{{ url_for('password_reset_request') }}" style="font-size:14px;color:var(--text-muted);">Mot de passe oublié ?</a>
           </div>
         </form>
       </section>
