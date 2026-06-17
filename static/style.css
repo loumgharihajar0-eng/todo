@@ -74,6 +74,11 @@ body {
 .btn.small { padding:6px 10px }
 .avatar { width:36px; height:36px; border-radius:50%; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700 }
 
+/* Timer */
+.timer { display:flex; align-items:center; gap:8px; background:transparent; padding:6px 8px; border-radius:10px }
+.timer .timer-display { font-weight:700; font-size:14px; color:var(--text); min-width:48px; text-align:center }
+.btn.ghost.small { padding:6px 8px; border-radius:8px }
+
 .eyebrow {
   margin: 0 0 10px;
   text-transform: uppercase;

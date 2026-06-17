@@ -26,6 +26,13 @@
         <div class="global-controls">
           <input id="globalSearch" class="search" type="search" placeholder="Rechercher des tâches, personnes, projets..." aria-label="Recherche globale" />
           <button id="newTaskBtn" class="btn primary small">Nouvelle tâche</button>
+
+          <div class="timer" id="timer" aria-live="polite">
+            <button id="timerToggle" class="btn ghost small" aria-pressed="false" title="Démarrer / Mettre en pause">▶</button>
+            <span id="timerDisplay" class="timer-display">25:00</span>
+            <button id="timerReset" class="btn ghost small" title="Réinitialiser">⟲</button>
+          </div>
+
           <button id="themeToggle" class="btn ghost" aria-pressed="false">🌙</button>
           <div class="avatar" title="Compte utilisateur">H</div>
         </div>

@@ -330,3 +330,104 @@ if (themeToggle) {
 loadTodos().catch(() => {
   setMessage("Impossible de charger la liste. Vérifie que le serveur tourne.");
 });
+
+/* Timer (simple Pomodoro-like) */
+const timerToggle = document.getElementById('timerToggle');
+const timerReset = document.getElementById('timerReset');
+const timerDisplay = document.getElementById('timerDisplay');
+
+const TIMER_KEY = 'aurora_timer_v1';
+let timerInterval = null;
+let timerState = {
+  remaining: 25 * 60, // seconds
+  running: false,
+  endAt: null
+};
+
+function loadTimer() {
+  try {
+    const raw = localStorage.getItem(TIMER_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      timerState = Object.assign(timerState, s);
+      // if running, recompute remaining
+      if (timerState.running && timerState.endAt) {
+        const diff = Math.round((timerState.endAt - Date.now()) / 1000);
+        timerState.remaining = Math.max(0, diff);
+        if (timerState.remaining === 0) timerState.running = false;
+      }
+    }
+  } catch (e) { console.warn('timer load failed', e); }
+}
+
+function saveTimer() { localStorage.setItem(TIMER_KEY, JSON.stringify(timerState)); }
+
+function formatTime(s) {
+  const mm = String(Math.floor(s / 60)).padStart(2,'0');
+  const ss = String(Math.floor(s % 60)).padStart(2,'0');
+  return `${mm}:${ss}`;
+}
+
+function updateTimerDisplay() {
+  if (timerDisplay) timerDisplay.textContent = formatTime(timerState.remaining);
+  if (timerToggle) timerToggle.textContent = timerState.running ? '⏸' : '▶';
+}
+
+function tickTimer() {
+  if (!timerState.running) return;
+  const now = Date.now();
+  timerState.remaining = Math.max(0, Math.round((timerState.endAt - now) / 1000));
+  if (timerState.remaining <= 0) {
+    timerState.running = false;
+    clearInterval(timerInterval); timerInterval = null;
+    // simple alert
+    try { new Audio('/static/tick.mp3'); } catch (e) {}
+  }
+  updateTimerDisplay();
+  saveTimer();
+}
+
+function startTimer() {
+  if (timerState.running) return;
+  timerState.endAt = Date.now() + timerState.remaining * 1000;
+  timerState.running = true;
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(tickTimer, 500);
+  saveTimer();
+  updateTimerDisplay();
+}
+
+function pauseTimer() {
+  if (!timerState.running) return;
+  timerState.running = false;
+  // compute remaining
+  const diff = Math.max(0, Math.round((timerState.endAt - Date.now()) / 1000));
+  timerState.remaining = diff;
+  timerState.endAt = null;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  saveTimer();
+  updateTimerDisplay();
+}
+
+function resetTimer() {
+  timerState.running = false;
+  timerState.remaining = 25 * 60;
+  timerState.endAt = null;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  saveTimer();
+  updateTimerDisplay();
+}
+
+if (timerToggle) {
+  timerToggle.addEventListener('click', () => {
+    if (timerState.running) pauseTimer(); else startTimer();
+  });
+}
+
+if (timerReset) {
+  timerReset.addEventListener('click', () => resetTimer());
+}
+
+loadTimer();
+if (timerState.running) startTimer();
+updateTimerDisplay();
