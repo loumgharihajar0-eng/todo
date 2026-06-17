@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin — Aurora Tasks</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <div class="product"><div class="name">Aurora Tasks</div></div>
+        </div>
+        <div class="global-controls">
+          <a href="/logout" class="btn ghost">Se déconnecter</a>
+        </div>
+      </div>
+    </header>
+    <main class="container">
+      <section class="panel">
+        <h2>Admin Dashboard</h2>
+        <p>Total des tâches: {{ total }}</p>
+        <h3>Utilisateurs</h3>
+        <table style="width:100%">
+          <thead><tr><th>ID</th><th>Username</th><th>Admin</th><th>Inscrit</th></tr></thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u.id }}</td>
+              <td>{{ u.username }}</td>
+              <td>{{ 'oui' if u.is_admin else 'non' }}</td>
+              <td>{{ u.created_at }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

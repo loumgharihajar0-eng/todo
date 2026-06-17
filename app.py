@@ -4,7 +4,9 @@ import os
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, g
+from flask import Flask, jsonify, render_template, request, g, session, redirect, url_for, flash
+from werkzeug.security import generate_password_hash, check_password_hash
+import os
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
@@ -19,6 +21,7 @@ except OSError:
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
+app.secret_key = os.getenv('FLASK_SECRET', 'dev-secret')
 
 
 def get_db() -> sqlite3.Connection:
@@ -52,6 +55,26 @@ def init_db(database: sqlite3.Connection) -> None:
         """
     )
     database.commit()
+    # create users table
+    database.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    database.commit()
+
+    # ensure a default admin user exists (username: admin, password: admin)
+    cur = database.execute("SELECT id FROM users WHERE username = ?", ("admin",))
+    if cur.fetchone() is None:
+        hashed = generate_password_hash(os.getenv('DEFAULT_ADMIN_PW', 'admin'))
+        database.execute("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ("admin", hashed))
+        database.commit()
 
 
 def serialize_todo(row: sqlite3.Row) -> dict:
@@ -66,6 +89,56 @@ def serialize_todo(row: sqlite3.Row) -> dict:
 @app.route("/")
 def index() -> str:
     return render_template("index.html")
+
+
+def get_user_by_username(username: str):
+    row = get_db().execute("SELECT id, username, password, is_admin FROM users WHERE username = ?", (username,)).fetchone()
+    return row
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        if not username or not password:
+            flash('Nom d\'utilisateur et mot de passe requis')
+            return redirect(url_for('login'))
+
+        user = get_user_by_username(username)
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            return redirect(url_for('index'))
+
+        flash('Identifiants invalides')
+        return redirect(url_for('login'))
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
+
+
+def login_required(fn):
+    def wrapper(*args, **kwargs):
+        if not session.get('user_id'):
+            return redirect(url_for('login'))
+        return fn(*args, **kwargs)
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
+@app.route('/admin')
+@login_required
+def admin():
+    db = get_db()
+    total = db.execute('SELECT COUNT(*) as cnt FROM todos').fetchone()['cnt']
+    users = db.execute('SELECT id, username, is_admin, created_at FROM users ORDER BY id DESC').fetchall()
+    return render_template('admin.html', total=total, users=users)
 
 
 @app.route("/api/todos", methods=["GET"])
