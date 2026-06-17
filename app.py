@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -7,7 +8,14 @@ from flask import Flask, jsonify, render_template, request, g
 
 BASE_DIR = Path(__file__).resolve().parent
 INSTANCE_DIR = BASE_DIR / "instance"
-DB_PATH = INSTANCE_DIR / "todos.db"
+
+try:
+    INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
+    DB_PATH = INSTANCE_DIR / "todos.db"
+except OSError:
+    TMP_DIR = Path(os.getenv("TMPDIR") or os.getenv("TMP") or "/tmp") / "todo_sqlite"
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    DB_PATH = TMP_DIR / "todos.db"
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
@@ -16,9 +24,9 @@ app.config["JSON_SORT_KEYS"] = False
 def get_db() -> sqlite3.Connection:
     database = g.get("db")
     if database is None:
-        INSTANCE_DIR.mkdir(exist_ok=True)
         database = sqlite3.connect(DB_PATH)
         database.row_factory = sqlite3.Row
+        init_db(database)
         g.db = database
     return database
 
@@ -32,22 +40,18 @@ def close_db(_: object | None = None) -> None:
 app.teardown_appcontext(close_db)
 
 
-def init_db() -> None:
-    database = sqlite3.connect(DB_PATH)
-    try:
-        database.execute(
-            """
-            CREATE TABLE IF NOT EXISTS todos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                completed INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
+def init_db(database: sqlite3.Connection) -> None:
+    database.execute(
+        """
+        CREATE TABLE IF NOT EXISTS todos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
-        database.commit()
-    finally:
-        database.close()
+        """
+    )
+    database.commit()
 
 
 def serialize_todo(row: sqlite3.Row) -> dict:
@@ -57,10 +61,6 @@ def serialize_todo(row: sqlite3.Row) -> dict:
         "completed": bool(row["completed"]),
         "created_at": row["created_at"],
     }
-
-
-with app.app_context():
-    init_db()
 
 
 @app.route("/")
