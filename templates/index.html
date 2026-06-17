@@ -40,7 +40,18 @@
           </div>
 
           <button id="themeToggle" class="btn ghost" aria-pressed="false">🌙</button>
-          <div class="avatar" title="Compte utilisateur">H</div>
+          {% if username %}
+            <div class="user-wrap">
+              <div class="avatar" title="{{ username }}">{{ username[0]|upper }}</div>
+              <div class="username">{{ username }}</div>
+              {% if is_admin %}
+                <a class="btn ghost small" href="{{ url_for('admin') }}">Admin</a>
+              {% endif %}
+              <a class="btn ghost small" href="{{ url_for('logout') }}">Se déconnecter</a>
+            </div>
+          {% else %}
+            <a class="btn ghost small" href="{{ url_for('login') }}">Se connecter</a>
+          {% endif %}
         </div>
       </div>
     </header>

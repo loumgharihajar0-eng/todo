@@ -108,7 +108,14 @@ def serialize_todo(row: sqlite3.Row) -> dict:
 
 @app.route("/")
 def index() -> str:
-    return render_template("index.html")
+    username = None
+    is_admin = False
+    if session.get('user_id'):
+        row = get_db().execute('SELECT username, is_admin FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        if row:
+            username = row['username']
+            is_admin = bool(row['is_admin'])
+    return render_template("index.html", username=username, is_admin=is_admin)
 
 
 def get_user_by_username(username: str):
